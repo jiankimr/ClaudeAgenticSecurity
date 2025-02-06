@@ -534,8 +534,9 @@ def track_sampling_loop():
         st.session_state.download_ready = True
         st.write("📂 Conversation auto-save completed!")
         trigger_auto_download()
-
-
+        
+    #After saving the log, initialize the state (prepare to receive the next input)
+    st.session_state.log_saved = False
 
 if __name__ == "__main__":
     asyncio.run(main())
