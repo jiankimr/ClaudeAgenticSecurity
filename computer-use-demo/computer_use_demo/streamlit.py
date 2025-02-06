@@ -95,7 +95,7 @@ def setup_state():
         st.session_state.hide_images = False
     if "in_sampling_loop" not in st.session_state:
         st.session_state.in_sampling_loop = False
-    if "log_saved" not in st.session_state:  # 로그 저장 상태 추가
+    if "log_saved" not in st.session_state:
         st.session_state.log_saved = False
     if "download_ready" not in st.session_state:
         st.session_state.download_ready = False
@@ -103,6 +103,8 @@ def setup_state():
         st.session_state.saved_file_name = ""
     if "saved_file_content" not in st.session_state:
         st.session_state.saved_file_content = None  # 메모리 저장 방식으로 변경
+    if "last_message_count" not in st.session_state:
+        st.session_state.last_message_count = 0
 
 def _reset_model():
     st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[
@@ -117,11 +119,12 @@ async def main():
     st.markdown(STREAMLIT_STYLE, unsafe_allow_html=True)
 
     st.title("Claude Computer Use Demo")
-    # ✅ 로그 저장 상태 확인
+
     st.write(f"📌 log_saved 상태: {st.session_state.log_saved}")
     st.write(f"📌 download_ready 상태: {st.session_state.download_ready}")
     st.write(f"📌 in_sampling_loop 상태: {st.session_state.in_sampling_loop}")
     st.write("📥 현재 메시지 상태:", st.session_state.messages)
+
 
     if not os.getenv("HIDE_WARNING", False):
         st.warning(WARNING_TEXT)
@@ -191,53 +194,6 @@ async def main():
     new_message = st.chat_input(
         "Type a message to send to Claude to control the computer..."
     )
-    
-
-    # ✅ 대화 종료 시 자동 저장 및 다운로드 트리거 실행
-    if not st.session_state.in_sampling_loop and not st.session_state.log_saved:
-        st.write("📝 로그 저장 시도 중...")
-        success = download_chat_logs()
-        if success:
-            st.session_state.download_ready = True
-            st.write("🔄 다운로드 준비 완료!")
-            st.rerun()
-
-    # ✅ 다운로드 준비가 되면 자동 실행
-    if st.session_state.download_ready:
-        st.write("🔄 자동 다운로드 시작...")
-        trigger_auto_download()
-        st.session_state.download_ready = False  # 중복 실행 방지
-
-#-------------------
-    # if "download_ready" not in st.session_state:
-    #     st.session_state.download_ready = False
-
-    #end of conversation
-    # if not st.session_state.in_sampling_loop and not st.session_state.download_ready:
-    #     st.session_state.download_ready = True  
-    #     st.rerun()  # UI undate
-
-    # save JSON log
-    # if st.session_state.download_ready:
-    #     chat_log = download_chat_logs()
-    #     if chat_log:
-    #         st.download_button(
-    #             label="Download chat Log",
-    #             data=chat_log,
-    #             file_name="chat_log.json",
-    #             mime="application/json"
-    #         )
-    #---------------------------
-    
-    # chat_log = download_chat_logs()
-    #
-    # if chat_log:
-    #     st.download_button(
-    #         label="Download chat Log",
-    #         data=chat_log,
-    #         file_name="chat_log.json",
-    #         mime="application/json"
-    #     )
 
     with chat:
         # render past chats
@@ -511,9 +467,8 @@ def download_chat_logs():
     return True
 
 
-# 저장된 파일 내용이 있는지 확인
 def trigger_auto_download():
-    """자동 다운로드 트리거"""
+    """automatic download trigger"""
     if not st.session_state.saved_file_content:
         st.write("⚠️ 다운로드할 데이터가 없습니다.")
         return
@@ -561,9 +516,24 @@ def trigger_auto_download():
     </body>
     </html>
     """
-    # HTML 및 JavaScript를 렌더링
     components.html(js_code, height=0)
     st.write("🚀 자동 다운로드 트리거 실행 완료!")
+
+@contextmanager
+def track_sampling_loop():
+    """Sampling 루프 진행 중 상태 관리"""
+    st.session_state.in_sampling_loop = True
+    st.write("🔄 Sampling 루프 시작")
+    yield
+    st.session_state.in_sampling_loop = False
+    st.write("✅ Sampling 루프 종료")
+
+    # 대화 로그 저장
+    success = download_chat_logs()
+    if success:
+        st.session_state.download_ready = True
+        st.write("📂 대화 자동 저장 완료!")
+        trigger_auto_download()
 
 
 
