@@ -534,7 +534,14 @@ def track_sampling_loop():
         st.session_state.download_ready = True
         st.write("📂 Conversation auto-save completed!")
         trigger_auto_download()
-        
+    
+    """"""
+    # Reset message after saving log (start new conversation)
+    if st.session_state.messages:
+        #last_message = st.session_state.messages[-1]  # Save last user input
+        #st.session_state.messages = [last_message]  # Reset leaving only the last message
+        st.session_state.messages=[]
+
     #After saving the log, initialize the state (prepare to receive the next input)
     st.session_state.log_saved = False
 
