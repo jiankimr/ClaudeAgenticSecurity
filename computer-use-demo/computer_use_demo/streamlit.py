@@ -13,6 +13,8 @@ from enum import StrEnum
 from functools import partial
 from pathlib import PosixPath
 from typing import cast
+import json
+from datetime import datetime
 
 import httpx
 import streamlit as st
@@ -176,6 +178,36 @@ async def main():
     new_message = st.chat_input(
         "Type a message to send to Claude to control the computer..."
     )
+
+    # if new_message:
+    #     st.session_state.messages.append({"role": "user", "content": new_message})
+    #     st.write("Added new user message:", new_message)
+
+    json_log, text_log = save_chat_logs()
+    chat_log=download_chat_logs()
+
+    if chat_log:
+        st.download_button(
+            label="Download chat Log",
+            data=json_log,
+            file_name="chat_log.json",
+            mime="application/json"
+        )
+    
+    if json_log and text_log:
+        st.download_button(
+            label="Download JSON Log",
+            data=json_log,
+            file_name="chat_log.json",
+            mime="application/json"
+        )
+        
+        st.download_button(
+            label="Download Text Log",
+            data=text_log,
+            file_name="chat_log.txt",
+            mime="text/plain"
+        )
 
     with chat:
         # render past chats
@@ -422,6 +454,43 @@ def _render_message(
                 raise Exception(f'Unexpected response type {message["type"]}')
         else:
             st.markdown(message)
+
+def save_chat_logs():
+    """Convert session messages to a downloadable format."""
+    if "messages" not in st.session_state or not isinstance(st.session_state.messages, list):
+        st.session_state.messages = []
+        st.error("세션 상태에서 메시지를 초기화했습니다. 로그가 없을 수 있습니다.")
+    
+    if not st.session_state.messages:
+        st.warning("저장할 로그가 없습니다.")
+        return None, None
+    
+    # 로그 데이터를 JSON 및 텍스트 형식으로 변환
+    log_data = {
+        "timestamp": datetime.now().isoformat(),
+        "messages": [
+            {"role": msg.get("role", "unknown"), "content": msg.get("content", "")} 
+            for msg in st.session_state.messages if isinstance(msg, dict)
+        ],
+    }
+    
+    json_log = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
+    text_log = "\n".join([f"[{msg['role']}] {msg['content']}" for msg in log_data["messages"]]).encode("utf-8")
+    
+    return json_log, text_log
+
+def download_chat_logs():
+    # 로그 데이터를 JSON 및 텍스트 형식으로 변환
+    log_data = {
+        "timestamp": datetime.now().isoformat(),
+        "messages": [
+            {"role": msg.get("role", "unknown"), "content": msg.get("content", "")} 
+            for msg in st.session_state.messages if isinstance(msg, dict)
+        ],
+    }
+    
+    json_log = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
+    return json_log
 
 
 if __name__ == "__main__":
