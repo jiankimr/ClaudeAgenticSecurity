@@ -183,31 +183,31 @@ async def main():
     #     st.session_state.messages.append({"role": "user", "content": new_message})
     #     st.write("Added new user message:", new_message)
 
-    json_log, text_log = save_chat_logs()
+    #json_log, text_log = save_chat_logs()
     chat_log=download_chat_logs()
 
     if chat_log:
         st.download_button(
             label="Download chat Log",
-            data=json_log,
+            data=chat_log,
             file_name="chat_log.json",
             mime="application/json"
         )
     
-    if json_log and text_log:
-        st.download_button(
-            label="Download JSON Log",
-            data=json_log,
-            file_name="chat_log.json",
-            mime="application/json"
-        )
+    # if json_log and text_log:
+    #     st.download_button(
+    #         label="Download JSON Log",
+    #         data=json_log,
+    #         file_name="chat_log.json",
+    #         mime="application/json"
+    #     )
         
-        st.download_button(
-            label="Download Text Log",
-            data=text_log,
-            file_name="chat_log.txt",
-            mime="text/plain"
-        )
+    #     st.download_button(
+    #         label="Download Text Log",
+    #         data=text_log,
+    #         file_name="chat_log.txt",
+    #         mime="text/plain"
+    #     )
 
     with chat:
         # render past chats
@@ -481,6 +481,10 @@ def save_chat_logs():
 
 def download_chat_logs():
     # 로그 데이터를 JSON 및 텍스트 형식으로 변환
+    if not st.session_state.messages:
+        st.warning("저장할 로그가 없습니다.")
+        return None
+    
     log_data = {
         "timestamp": datetime.now().isoformat(),
         "messages": [
