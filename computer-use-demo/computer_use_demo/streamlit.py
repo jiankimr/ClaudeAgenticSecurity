@@ -443,11 +443,11 @@ def _render_message(
 
 def download_chat_logs():
     if not st.session_state.messages:
-        st.write("⚠️ 저장할 메시지가 없습니다.")
+        st.write("⚠️ No messages to save")
         return None
 
     if st.session_state.log_saved:
-        st.write("⚠️ 로그가 이미 저장되었습니다.")
+        st.write("⚠️ Log has already been saved")
         return None
     
     st.session_state.log_saved = True
@@ -462,15 +462,15 @@ def download_chat_logs():
     json_bytes = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
     st.session_state.saved_file_content = io.BytesIO(json_bytes)
     st.session_state.saved_file_name = f"chat_log_{timestamp}.json"
-    st.write("✅ 로그 저장 완료:", st.session_state.saved_file_name)
-    st.write("📄 저장된 데이터 길이:", len(json_bytes))
+    st.write("✅ Log saved completed:", st.session_state.saved_file_name)
+    st.write("📄 Stored data length:", len(json_bytes))
     return True
 
 
 def trigger_auto_download():
     """automatic download trigger"""
     if not st.session_state.saved_file_content:
-        st.write("⚠️ 다운로드할 데이터가 없습니다.")
+        st.write("⚠️ No messages to save")
         return
     
     # Base64 데이터 생성
@@ -511,28 +511,28 @@ def trigger_auto_download():
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            console.log("✅ 다운로드 완료");
+            console.log("✅ Log saved completed");
         </script>
     </body>
     </html>
     """
     components.html(js_code, height=0)
-    st.write("🚀 자동 다운로드 트리거 실행 완료!")
+    st.write("🚀 Automatic download trigger execution complete!")
 
 @contextmanager
 def track_sampling_loop():
-    """Sampling 루프 진행 중 상태 관리"""
+    """State management during sampling loop progress"""
     st.session_state.in_sampling_loop = True
-    st.write("🔄 Sampling 루프 시작")
+    st.write("🔄 Start sampling loop")
     yield
     st.session_state.in_sampling_loop = False
-    st.write("✅ Sampling 루프 종료")
+    st.write("✅ End sampling loop")
 
     # 대화 로그 저장
     success = download_chat_logs()
     if success:
         st.session_state.download_ready = True
-        st.write("📂 대화 자동 저장 완료!")
+        st.write("📂 Conversation auto-save completed!")
         trigger_auto_download()
 
 
