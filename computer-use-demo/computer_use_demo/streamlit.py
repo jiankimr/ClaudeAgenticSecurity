@@ -1,7 +1,7 @@
 """
 Entrypoint for streamlit, see https://docs.streamlit.io/
 """
-import io  # 이 부분을 추가
+import io
 import asyncio
 import base64
 import os
