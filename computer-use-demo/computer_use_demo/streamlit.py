@@ -1,7 +1,7 @@
 """
 Entrypoint for streamlit, see https://docs.streamlit.io/
 """
-
+import io  # 이 부분을 추가
 import asyncio
 import base64
 import os
@@ -15,6 +15,7 @@ from pathlib import PosixPath
 from typing import cast
 import json
 from datetime import datetime
+import streamlit.components.v1 as components
 
 import httpx
 import streamlit as st
@@ -94,7 +95,14 @@ def setup_state():
         st.session_state.hide_images = False
     if "in_sampling_loop" not in st.session_state:
         st.session_state.in_sampling_loop = False
-
+    if "log_saved" not in st.session_state:  # 로그 저장 상태 추가
+        st.session_state.log_saved = False
+    if "download_ready" not in st.session_state:
+        st.session_state.download_ready = False
+    if "saved_file_name" not in st.session_state:
+        st.session_state.saved_file_name = ""
+    if "saved_file_content" not in st.session_state:
+        st.session_state.saved_file_content = None  # 메모리 저장 방식으로 변경
 
 def _reset_model():
     st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[
@@ -109,6 +117,11 @@ async def main():
     st.markdown(STREAMLIT_STYLE, unsafe_allow_html=True)
 
     st.title("Claude Computer Use Demo")
+    # ✅ 로그 저장 상태 확인
+    st.write(f"📌 log_saved 상태: {st.session_state.log_saved}")
+    st.write(f"📌 download_ready 상태: {st.session_state.download_ready}")
+    st.write(f"📌 in_sampling_loop 상태: {st.session_state.in_sampling_loop}")
+    st.write("📥 현재 메시지 상태:", st.session_state.messages)
 
     if not os.getenv("HIDE_WARNING", False):
         st.warning(WARNING_TEXT)
@@ -178,35 +191,52 @@ async def main():
     new_message = st.chat_input(
         "Type a message to send to Claude to control the computer..."
     )
-
-    # if new_message:
-    #     st.session_state.messages.append({"role": "user", "content": new_message})
-    #     st.write("Added new user message:", new_message)
-
-    #json_log, text_log = save_chat_logs()
-    chat_log=download_chat_logs()
-
-    if chat_log:
-        st.download_button(
-            label="Download chat Log",
-            data=chat_log,
-            file_name="chat_log.json",
-            mime="application/json"
-        )
     
-    # if json_log and text_log:
+
+    # ✅ 대화 종료 시 자동 저장 및 다운로드 트리거 실행
+    if not st.session_state.in_sampling_loop and not st.session_state.log_saved:
+        st.write("📝 로그 저장 시도 중...")
+        success = download_chat_logs()
+        if success:
+            st.session_state.download_ready = True
+            st.write("🔄 다운로드 준비 완료!")
+            st.rerun()
+
+    # ✅ 다운로드 준비가 되면 자동 실행
+    if st.session_state.download_ready:
+        st.write("🔄 자동 다운로드 시작...")
+        trigger_auto_download()
+        st.session_state.download_ready = False  # 중복 실행 방지
+
+#-------------------
+    # if "download_ready" not in st.session_state:
+    #     st.session_state.download_ready = False
+
+    #end of conversation
+    # if not st.session_state.in_sampling_loop and not st.session_state.download_ready:
+    #     st.session_state.download_ready = True  
+    #     st.rerun()  # UI undate
+
+    # save JSON log
+    # if st.session_state.download_ready:
+    #     chat_log = download_chat_logs()
+    #     if chat_log:
+    #         st.download_button(
+    #             label="Download chat Log",
+    #             data=chat_log,
+    #             file_name="chat_log.json",
+    #             mime="application/json"
+    #         )
+    #---------------------------
+    
+    # chat_log = download_chat_logs()
+    #
+    # if chat_log:
     #     st.download_button(
-    #         label="Download JSON Log",
-    #         data=json_log,
+    #         label="Download chat Log",
+    #         data=chat_log,
     #         file_name="chat_log.json",
     #         mime="application/json"
-    #     )
-        
-    #     st.download_button(
-    #         label="Download Text Log",
-    #         data=text_log,
-    #         file_name="chat_log.txt",
-    #         mime="text/plain"
     #     )
 
     with chat:
@@ -455,46 +485,86 @@ def _render_message(
         else:
             st.markdown(message)
 
-def save_chat_logs():
-    """Convert session messages to a downloadable format."""
-    if "messages" not in st.session_state or not isinstance(st.session_state.messages, list):
-        st.session_state.messages = []
-        st.error("세션 상태에서 메시지를 초기화했습니다. 로그가 없을 수 있습니다.")
-    
-    if not st.session_state.messages:
-        st.warning("저장할 로그가 없습니다.")
-        return None, None
-    
-    # 로그 데이터를 JSON 및 텍스트 형식으로 변환
-    log_data = {
-        "timestamp": datetime.now().isoformat(),
-        "messages": [
-            {"role": msg.get("role", "unknown"), "content": msg.get("content", "")} 
-            for msg in st.session_state.messages if isinstance(msg, dict)
-        ],
-    }
-    
-    json_log = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
-    text_log = "\n".join([f"[{msg['role']}] {msg['content']}" for msg in log_data["messages"]]).encode("utf-8")
-    
-    return json_log, text_log
-
 def download_chat_logs():
-    # 로그 데이터를 JSON 및 텍스트 형식으로 변환
     if not st.session_state.messages:
-        st.warning("저장할 로그가 없습니다.")
+        st.write("⚠️ 저장할 메시지가 없습니다.")
+        return None
+
+    if st.session_state.log_saved:
+        st.write("⚠️ 로그가 이미 저장되었습니다.")
         return None
     
+    st.session_state.log_saved = True
+    timestamp = datetime.now().isoformat()
     log_data = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": timestamp,
         "messages": [
             {"role": msg.get("role", "unknown"), "content": msg.get("content", "")} 
-            for msg in st.session_state.messages if isinstance(msg, dict)
+            for msg in st.session_state.messages
         ],
     }
+    json_bytes = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
+    st.session_state.saved_file_content = io.BytesIO(json_bytes)
+    st.session_state.saved_file_name = f"chat_log_{timestamp}.json"
+    st.write("✅ 로그 저장 완료:", st.session_state.saved_file_name)
+    st.write("📄 저장된 데이터 길이:", len(json_bytes))
+    return True
+
+
+# 저장된 파일 내용이 있는지 확인
+def trigger_auto_download():
+    """자동 다운로드 트리거"""
+    if not st.session_state.saved_file_content:
+        st.write("⚠️ 다운로드할 데이터가 없습니다.")
+        return
     
-    json_log = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
-    return json_log
+    # Base64 데이터 생성
+    st.session_state.saved_file_content.seek(0)
+    file_data = st.session_state.saved_file_content.read()
+    b64_data = base64.b64encode(file_data).decode()
+    file_name = st.session_state.saved_file_name
+
+    # JavaScript HTML 생성
+    js_code = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Auto Download</title>
+    </head>
+    <body>
+        <script>
+            // Base64 데이터를 Blob으로 변환
+            const b64Data = "{b64_data}";
+            const byteCharacters = atob(b64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {{
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }}
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], {{ type: "application/json" }});
+
+            // Blob URL 생성 및 다운로드
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "{file_name}";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            console.log("✅ 다운로드 완료");
+        </script>
+    </body>
+    </html>
+    """
+    # HTML 및 JavaScript를 렌더링
+    components.html(js_code, height=0)
+    st.write("🚀 자동 다운로드 트리거 실행 완료!")
+
 
 
 if __name__ == "__main__":
