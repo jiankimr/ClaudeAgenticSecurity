@@ -5,6 +5,7 @@ import io
 import asyncio
 import base64
 import os
+import sys
 import subprocess
 import traceback
 from contextlib import contextmanager
@@ -58,6 +59,54 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
+json_path = "/home/computeruse/computer_use_demo/HarmWeb.json"
+
+import json
+
+def load_json_from_path(file_path):
+    absolute_path = os.path.abspath(file_path)  
+
+    if not os.path.exists(absolute_path):
+        st.error(f"⚠️ JSON 파일이 존재하지 않습니다: {absolute_path}")
+        return []
+
+    try:
+        with open(absolute_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+             # "task" 값만 추출하여 리스트로 반환
+            return [item["task"] for item in data if "task" in item]
+    
+            st.success(f"✅ JSON 파일 로드 성공: {absolute_path}")
+            return data
+        
+    except Exception as e:
+        st.error(f"❌ JSON 파일 로드 중 오류 발생: {e}")
+        return []
+
+def load_tasks_from_json(file_path):
+    if not os.path.exists(file_path):
+        st.error(f"⚠️ JSON 파일이 존재하지 않습니다: {file_path}")
+        return []
+    
+    with open(file_path, "r", encoding="utf-8") as file:
+        data = json.load(file)
+    
+    return [item["task"] for item in data if "task" in item]
+
+def get_next_task():
+    """다음 task를 가져오는 함수"""
+    if "tasks" not in st.session_state:
+        st.session_state.tasks = load_tasks_from_json(json_path)
+
+    if "task_index" not in st.session_state:
+        st.session_state.task_index = 0
+
+    if st.session_state.task_index < len(st.session_state.tasks):
+        next_task = st.session_state.tasks[st.session_state.task_index]
+        st.session_state.task_index += 1
+        return next_task
+    else:
+        return None  # 모든 task가 소진됨
 
 class Sender(StrEnum):
     USER = "user"
@@ -105,6 +154,12 @@ def setup_state():
         st.session_state.saved_file_content = None  # 메모리 저장 방식으로 변경
     if "last_message_count" not in st.session_state:
         st.session_state.last_message_count = 0
+    # JSON에서 task 로드
+    if "tasks" not in st.session_state:
+        st.session_state.tasks = load_tasks_from_json(json_path)  # JSON에서 task 로드
+    # 현재 사용 중인 Task 인덱스 확인
+    if "task_index" not in st.session_state:
+        st.session_state.task_index = 0
 
 def _reset_model():
     st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[
@@ -120,10 +175,31 @@ async def main():
 
     st.title("Claude Computer Use Demo")
 
-    st.write(f"📌 log_saved 상태: {st.session_state.log_saved}")
-    st.write(f"📌 download_ready 상태: {st.session_state.download_ready}")
-    st.write(f"📌 in_sampling_loop 상태: {st.session_state.in_sampling_loop}")
-    st.write("📥 현재 메시지 상태:", st.session_state.messages)
+    st.write(f"📌 log_saved status: {st.session_state.log_saved}")
+    st.write(f"📌 download_ready status: {st.session_state.download_ready}")
+    st.write(f"📌 in_sampling_loop status: {st.session_state.in_sampling_loop}")
+    st.write("📥 current message status:", st.session_state.messages)
+    st.write("📂 JSON 파일 경로:", json_path)
+    st.write("🔍 JSON 절대 파일 경로:", os.path.abspath(json_path))
+    # 현재 실행 중인 작업 디렉토리 확인
+    current_dir = os.getcwd()
+    st.write(f"📂 현재 작업 디렉토리: {current_dir}")
+    st.write(f"📂 현재 Streamlit 작업 디렉토리: `{os.getcwd()}`")
+    st.write(f"🐍 실행 중인 Python 경로: `{sys.executable}`")
+    st.write(f"📦 사용 중인 Python 환경: `{sys.version}`")
+
+    if os.path.exists(json_path):
+        st.success(f"✅ JSON 파일이 존재합니다: `{json_path}`")
+    else:
+        st.error(f"⚠️ JSON 파일이 존재하지 않습니다: `{json_path}`")
+
+    # JSON 파일 로드 시도
+    json_data = load_json_from_path(json_path)
+    # 불러온 데이터 확인
+    st.write("📄 불러온 JSON 데이터:", json_data)
+    st.write("🔄 불러온 Task 목록:", st.session_state.tasks)  # 전체 task 리스트 확인
+    st.write(f"📌 현재 Task Index: {st.session_state.task_index}")
+    #st.write(f"🎯 현재 할당된 Task: {new_task}")
 
 
     if not os.getenv("HIDE_WARNING", False):
@@ -191,10 +267,14 @@ async def main():
             st.session_state.auth_validated = True
 
     chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
+
+    #automatic input
+    await run_task_loop(http_logs)
+
+    #new_message=get_next_task()
     new_message = st.chat_input(
         "Type a message to send to Claude to control the computer..."
     )
-
     with chat:
         # render past chats
         for message in st.session_state.messages:
@@ -259,7 +339,6 @@ async def main():
                 api_key=st.session_state.api_key,
                 only_n_most_recent_images=st.session_state.only_n_most_recent_images,
             )
-
 
 def maybe_add_interruption_blocks():
     if not st.session_state.in_sampling_loop:
@@ -544,6 +623,51 @@ def track_sampling_loop():
 
     #After saving the log, initialize the state (prepare to receive the next input)
     st.session_state.log_saved = False
+
+async def run_task_loop(http_logs):
+    """Task를 반복해서 실행하는 루프"""
+    while True:
+        new_task = get_next_task()
+
+        if new_task is None:
+            st.warning("⚠️ 모든 Task가 소진되었습니다. 실행을 종료합니다.")
+            break  # 모든 Task가 끝났으면 종료
+
+        # 새로운 Task를 Messages에 추가
+        st.session_state.messages.append(
+            {
+                "role": Sender.USER,
+                "content": [
+                    *maybe_add_interruption_blocks(),
+                    BetaTextBlockParam(type="text", text=new_task),
+                ],
+            }
+        )
+        _render_message(Sender.USER, new_task)
+        st.success(f"🎯 새로운 Task가 할당됨: {new_task}")
+
+        # 🚀 새로운 Task를 Claude가 자동으로 실행하도록 다시 샘플링 루프 실행
+        with track_sampling_loop():
+            st.session_state.messages = await sampling_loop(
+                system_prompt_suffix=st.session_state.custom_system_prompt,
+                model=st.session_state.model,
+                provider=st.session_state.provider,
+                messages=st.session_state.messages,
+                output_callback=partial(_render_message, Sender.BOT),
+                tool_output_callback=partial(
+                    _tool_output_callback, tool_state=st.session_state.tools
+                ),
+                api_response_callback=partial(
+                    _api_response_callback,
+                    tab=http_logs,
+                    response_state=st.session_state.responses,
+                ),
+                api_key=st.session_state.api_key,
+                only_n_most_recent_images=st.session_state.only_n_most_recent_images,
+            )
+
+        await asyncio.sleep(2)  # 너무 빠른 반복을 방지하기 위해 2초 대기
+
 
 if __name__ == "__main__":
     asyncio.run(main())
