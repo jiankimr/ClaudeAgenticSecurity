@@ -59,7 +59,7 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
-json_path = "/home/computeruse/computer_use_demo/HarmWeb.json"
+json_path = "/home/computeruse/computer_use_demo/autoHarmWeb.json"
 
 import json
 
@@ -84,17 +84,38 @@ def load_json_from_path(file_path):
         return []
 
 def load_tasks_from_json(file_path):
+    """JSON 파일에서 identifier와 task를 함께 로드"""
     if not os.path.exists(file_path):
         st.error(f"⚠️ JSON 파일이 존재하지 않습니다: {file_path}")
         return []
     
-    with open(file_path, "r", encoding="utf-8") as file:
-        data = json.load(file)
-    
-    return [item["task"] for item in data if "task" in item]
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        
+        # 데이터 형식 검사 및 변환
+        if not isinstance(data, list):  # JSON 파일이 리스트 형태가 아닌 경우
+            st.error("❌ JSON 파일의 형식이 잘못되었습니다. 리스트여야 합니다.")
+            return []
+
+        formatted_data = []
+        for item in data:
+            if isinstance(item, dict) and "identifier" in item and "task" in item:
+                formatted_data.append({"identifier": item["identifier"], "task": item["task"]})
+            else:
+                st.warning(f"⚠️ JSON 항목이 올바른 형식이 아닙니다: {item}")
+
+        return formatted_data
+
+    except json.JSONDecodeError as e:
+        st.error(f"❌ JSON 파일 로드 중 오류 발생 (잘못된 형식): {e}")
+        return []
+    except Exception as e:
+        st.error(f"❌ JSON 파일 로드 중 예기치 않은 오류 발생: {e}")
+        return []
 
 def get_next_task():
-    """다음 task를 가져오는 함수"""
+    """다음 task를 identifier와 함께 가져오는 함수"""
     if "tasks" not in st.session_state:
         st.session_state.tasks = load_tasks_from_json(json_path)
 
@@ -102,11 +123,16 @@ def get_next_task():
         st.session_state.task_index = 0
 
     if st.session_state.task_index < len(st.session_state.tasks):
-        next_task = st.session_state.tasks[st.session_state.task_index]
+        next_task_data = st.session_state.tasks[st.session_state.task_index]
         st.session_state.task_index += 1
-        return next_task
+
+        if isinstance(next_task_data, dict) and "identifier" in next_task_data and "task" in next_task_data:
+            return next_task_data["identifier"], next_task_data["task"]  # identifier, task 분리 반환
+        else:
+            st.error(f"❌ 잘못된 Task 데이터: {next_task_data}")
+            return None, None
     else:
-        return None  # 모든 task가 소진됨
+        return None, None  # 모든 task가 소진됨
 
 class Sender(StrEnum):
     USER = "user"
@@ -530,9 +556,14 @@ def download_chat_logs():
         return None
     
     st.session_state.log_saved = True
-    timestamp = datetime.now().isoformat()
+     # 가장 최근 identifier 가져오기 (없으면 "unknown")
+    last_identifier = st.session_state.get("current_identifier", "unknown")
+
+    # 날짜만 포함된 timestamp 생성
+    timestamp = datetime.now().strftime("%Y-%m-%d")
     log_data = {
         "timestamp": timestamp,
+        "identifier": last_identifier,  # identifier 추가
         "messages": [
             {"role": msg.get("role", "unknown"), "content": msg.get("content", "")} 
             for msg in st.session_state.messages
@@ -540,7 +571,7 @@ def download_chat_logs():
     }
     json_bytes = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
     st.session_state.saved_file_content = io.BytesIO(json_bytes)
-    st.session_state.saved_file_name = f"chat_log_{timestamp}.json"
+    st.session_state.saved_file_name = f"chat_log_{timestamp}_{last_identifier}.json"
     st.write("✅ Log saved completed:", st.session_state.saved_file_name)
     st.write("📄 Stored data length:", len(json_bytes))
     return True
@@ -609,7 +640,8 @@ def track_sampling_loop():
 
     # 대화 로그 저장
     success = download_chat_logs()
-    if success:
+    last_identifier = st.session_state.get("current_identifier", "unknown")
+    if success and last_identifier != "scenchg":
         st.session_state.download_ready = True
         st.write("📂 Conversation auto-save completed!")
         trigger_auto_download()
@@ -627,11 +659,13 @@ def track_sampling_loop():
 async def run_task_loop(http_logs):
     """Task를 반복해서 실행하는 루프"""
     while True:
-        new_task = get_next_task()
+        new_identifier, new_task = get_next_task()
 
         if new_task is None:
             st.warning("⚠️ 모든 Task가 소진되었습니다. 실행을 종료합니다.")
             break  # 모든 Task가 끝났으면 종료
+
+        st.session_state.current_identifier = new_identifier  
 
         # 새로운 Task를 Messages에 추가
         st.session_state.messages.append(
@@ -644,7 +678,7 @@ async def run_task_loop(http_logs):
             }
         )
         _render_message(Sender.USER, new_task)
-        st.success(f"🎯 새로운 Task가 할당됨: {new_task}")
+        st.success(f"🎯 새로운 Task 할당됨: [{new_identifier}] {new_task}")
 
         # 🚀 새로운 Task를 Claude가 자동으로 실행하도록 다시 샘플링 루프 실행
         with track_sampling_loop():
