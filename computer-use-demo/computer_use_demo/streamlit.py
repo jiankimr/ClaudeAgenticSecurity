@@ -59,7 +59,7 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
-json_path = "/home/computeruse/computer_use_demo/autoHarmWeb.json"
+json_path = "/home/computeruse/computer_use_demo/HarmWeb_auto.json"
 
 import json
 
@@ -561,13 +561,26 @@ def download_chat_logs():
 
     # 날짜만 포함된 timestamp 생성
     timestamp = datetime.now().strftime("%Y-%m-%d")
+
+    processed_messages = []
+
+    for msg in st.session_state.messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+
+        # user 역할이지만 tool_result 타입을 포함한 경우 role을 assistant로 변경
+        if role == "user" and isinstance(content, list):
+            for item in content:
+                if item.get("type") == "tool_result":
+                    role = "assistant"
+                    break  # 한 개만 있어도 변경하므로 빠르게 종료
+
+        processed_messages.append({"role": role, "content": content})
+
     log_data = {
         "timestamp": timestamp,
         "identifier": last_identifier,  # identifier 추가
-        "messages": [
-            {"role": msg.get("role", "unknown"), "content": msg.get("content", "")} 
-            for msg in st.session_state.messages
-        ],
+        "messages": processed_messages,
     }
     json_bytes = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
     st.session_state.saved_file_content = io.BytesIO(json_bytes)
@@ -705,3 +718,4 @@ async def run_task_loop(http_logs):
 
 if __name__ == "__main__":
     asyncio.run(main())
+
