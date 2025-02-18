@@ -201,30 +201,30 @@ async def main():
 
     st.title("Claude Computer Use Demo")
 
-    st.write(f"📌 log_saved status: {st.session_state.log_saved}")
-    st.write(f"📌 download_ready status: {st.session_state.download_ready}")
-    st.write(f"📌 in_sampling_loop status: {st.session_state.in_sampling_loop}")
-    st.write("📥 current message status:", st.session_state.messages)
-    st.write("📂 JSON 파일 경로:", json_path)
-    st.write("🔍 JSON 절대 파일 경로:", os.path.abspath(json_path))
+    # st.write(f"📌 log_saved status: {st.session_state.log_saved}")
+    # st.write(f"📌 download_ready status: {st.session_state.download_ready}")
+    # st.write(f"📌 in_sampling_loop status: {st.session_state.in_sampling_loop}")
+    # st.write("📥 current message status:", st.session_state.messages)
+    # st.write("📂 JSON 파일 경로:", json_path)
+    # st.write("🔍 JSON 절대 파일 경로:", os.path.abspath(json_path))
     # 현재 실행 중인 작업 디렉토리 확인
     current_dir = os.getcwd()
-    st.write(f"📂 현재 작업 디렉토리: {current_dir}")
-    st.write(f"📂 현재 Streamlit 작업 디렉토리: `{os.getcwd()}`")
-    st.write(f"🐍 실행 중인 Python 경로: `{sys.executable}`")
-    st.write(f"📦 사용 중인 Python 환경: `{sys.version}`")
+    # st.write(f"📂 현재 작업 디렉토리: {current_dir}")
+    # st.write(f"📂 현재 Streamlit 작업 디렉토리: `{os.getcwd()}`")
+    # st.write(f"🐍 실행 중인 Python 경로: `{sys.executable}`")
+    # st.write(f"📦 사용 중인 Python 환경: `{sys.version}`")
 
-    if os.path.exists(json_path):
-        st.success(f"✅ JSON 파일이 존재합니다: `{json_path}`")
-    else:
-        st.error(f"⚠️ JSON 파일이 존재하지 않습니다: `{json_path}`")
+    # if os.path.exists(json_path):
+    #     st.success(f"✅ JSON 파일이 존재합니다: `{json_path}`")
+    # else:
+    #     st.error(f"⚠️ JSON 파일이 존재하지 않습니다: `{json_path}`")
 
     # JSON 파일 로드 시도
     json_data = load_json_from_path(json_path)
     # 불러온 데이터 확인
     st.write("📄 불러온 JSON 데이터:", json_data)
-    st.write("🔄 불러온 Task 목록:", st.session_state.tasks)  # 전체 task 리스트 확인
-    st.write(f"📌 현재 Task Index: {st.session_state.task_index}")
+    # st.write("🔄 불러온 Task 목록:", st.session_state.tasks)  # 전체 task 리스트 확인
+    # st.write(f"📌 현재 Task Index: {st.session_state.task_index}")
     #st.write(f"🎯 현재 할당된 Task: {new_task}")
 
 
@@ -676,7 +676,7 @@ async def run_task_loop(http_logs):
         new_identifier, new_task = get_next_task()
 
         if new_task is None:
-            st.warning("⚠️ 모든 Task가 소진되었습니다. 실행을 종료합니다.")
+            st.warning("All tasks are exhausted. End.")
             break  # 모든 Task가 끝났으면 종료
 
         st.session_state.current_identifier = new_identifier  
@@ -692,7 +692,7 @@ async def run_task_loop(http_logs):
             }
         )
         _render_message(Sender.USER, new_task)
-        st.success(f"🎯 새로운 Task 할당됨: [{new_identifier}] {new_task}")
+        st.success(f"New Task assigned: [{new_identifier}] {new_task}")
 
         # 🚀 새로운 Task를 Claude가 자동으로 실행하도록 다시 샘플링 루프 실행
         with track_sampling_loop():
@@ -714,7 +714,7 @@ async def run_task_loop(http_logs):
                 only_n_most_recent_images=st.session_state.only_n_most_recent_images,
             )
 
-        await asyncio.sleep(2)  # 너무 빠른 반복을 방지하기 위해 2초 대기
+        await asyncio.sleep(4)  # 너무 빠른 반복을 방지하기 위해 4초 대기
 
 
 if __name__ == "__main__":
