@@ -59,7 +59,7 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
-json_path = "/home/computeruse/computer_use_demo/HarmWeb_auto.json"
+json_path = "/home/computeruse/computer_use_demo/HarmGUI.json"
 
 import json
 
@@ -295,7 +295,8 @@ async def main():
     chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
 
     #automatic input
-    await run_task_loop(http_logs)
+    if st.button("start automatic attack!"):
+        await run_task_loop(http_logs)
 
     #new_message=get_next_task()
     new_message = st.chat_input(
