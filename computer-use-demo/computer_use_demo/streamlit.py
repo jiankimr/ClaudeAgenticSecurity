@@ -59,48 +59,56 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
-json_path = "/home/computeruse/computer_use_demo/HarmGUI.json"
-LAST_TASK_FILE = "/home/computeruse/computer_use_demo/last_task.json"
+DATA_DIR = "/home/computeruse/computer_use_demo/data"
+LOG_DIR = "/home/computeruse/computer_use_demo/log" 
 
-def load_last_task():
-    """마지막 실행한 identifier를 불러오는 함수"""
-    if os.path.exists(LAST_TASK_FILE):
+def get_json_files():
+    """data/ 폴더 내 JSON 파일 리스트 반환"""
+    if not os.path.exists(DATA_DIR):
+        st.error(f"⚠️ 데이터 폴더가 존재하지 않습니다: {DATA_DIR}")
+        return []
+    return [f for f in os.listdir(DATA_DIR) if f.endswith(".json")]
+
+def load_last_task(selected_file):
+    """마지막 실행한 identifier를 불러오는 함수 (파일별 저장)"""
+    last_task_path = os.path.join(DATA_DIR, f"{selected_file}_last_task.json")
+    
+    if os.path.exists(last_task_path):
         try:
-            with open(LAST_TASK_FILE, "r", encoding="utf-8") as file:
+            with open(last_task_path, "r", encoding="utf-8") as file:
                 data = json.load(file)
-                return data.get("last_identifier")
+                last_identifier = data.get("last_identifier")
+
+                if last_identifier:
+                    return last_identifier
+                else:
+                    st.warning(f"⚠️ 저장된 identifier가 없습니다. 처음부터 실행합니다.")
+                    return None
         except json.JSONDecodeError:
-            st.warning("⚠️ 마지막 실행 기록 파일이 손상되었습니다. 처음부터 실행합니다.")
+            st.warning(f"⚠️ 마지막 실행 기록이 손상됨: {last_task_path}. 처음부터 실행합니다.")
             return None
     return None
 
-def save_last_task(identifier):
-    """현재 실행 중인 identifier를 저장하는 함수"""
+def save_last_task(selected_file, identifier):
+    """현재 실행 중인 identifier를 저장하는 함수 (파일별 저장)"""
+    last_task_path = os.path.join(DATA_DIR, f"{selected_file}_last_task.json")
+
     try:
-        with open(LAST_TASK_FILE, "w", encoding="utf-8") as file:
-            json.dump({"last_identifier": identifier}, file, indent=4, ensure_ascii=False)
+        # ✅ task_index가 증가한 상태에서 저장해야 함.
+        next_task_index = st.session_state.get("task_index", 0)
+
+        if next_task_index < len(st.session_state.tasks) - 1:
+            next_identifier = st.session_state.tasks[next_task_index + 1]["identifier"]
+        else:
+            next_identifier = identifier  # 마지막 task일 경우 같은 identifier 저장
+
+        with open(last_task_path, "w", encoding="utf-8") as file:
+            json.dump({"last_identifier": next_identifier}, file, indent=4, ensure_ascii=False)
+
+        st.write(f"✅ 실행된 identifier 저장 완료: {next_identifier}")
+
     except Exception as e:
         st.error(f"❌ 마지막 실행 기록 저장 실패: {e}")
-
-def load_json_from_path(file_path):
-    absolute_path = os.path.abspath(file_path)  
-
-    if not os.path.exists(absolute_path):
-        st.error(f"⚠️ JSON 파일이 존재하지 않습니다: {absolute_path}")
-        return []
-
-    try:
-        with open(absolute_path, "r", encoding="utf-8") as file:
-            data = json.load(file)
-             # "task" 값만 추출하여 리스트로 반환
-            return [item["task"] for item in data if "task" in item]
-    
-            st.success(f"✅ JSON 파일 로드 성공: {absolute_path}")
-            return data
-        
-    except Exception as e:
-        st.error(f"❌ JSON 파일 로드 중 오류 발생: {e}")
-        return []
 
 def load_tasks_from_json(file_path):
     """JSON 파일에서 identifier와 task를 함께 로드"""
@@ -133,22 +141,25 @@ def load_tasks_from_json(file_path):
         st.error(f"❌ JSON 파일 로드 중 예기치 않은 오류 발생: {e}")
         return []
 
-def get_next_task():
-    """다음 task를 identifier와 함께 가져오는 함수"""
-    if "tasks" not in st.session_state:
-        st.session_state.tasks = load_tasks_from_json(json_path)
-
-    if "task_index" not in st.session_state:
-        st.session_state.task_index = 0
-
-    last_identifier = load_last_task()  # 마지막 실행한 identifier 불러오기
-
-    # ✅ 마지막 실행된 identifier 이후의 task부터 실행
+def get_next_task(selected_file):
+    """선택된 JSON 파일에서 중지된 시점의 task를 identifier와 함께 가져오는 함수"""
+    file_path = os.path.join(DATA_DIR, selected_file)
+    
+    if "tasks" not in st.session_state or st.session_state.selected_file != selected_file:
+        st.session_state.tasks = load_tasks_from_json(file_path)
+        #st.session_state.task_index = 0
+        st.session_state.selected_file = selected_file
+        
+        if "task_index" not in st.session_state:
+            st.session_state.task_index = 0  # ✅ 새로운 파일을 선택하면 인덱스 초기화 안 함
+    
+    last_identifier = load_last_task(selected_file)    # ✅ 마지막 실행된 identifier 이후의 task부터 실행
+    
     if last_identifier:
         found = False
         for idx, task in enumerate(st.session_state.tasks):
             if task["identifier"] == last_identifier:
-                st.session_state.task_index = idx + 1  # 마지막 identifier 이후의 task부터 실행
+                st.session_state.task_index = idx #+ 1  # 마지막 identifier 이후의xx이어서 task부터 실행
                 st.success(f"🔄 이전 실행된 task({last_identifier})를 확인했습니다. 이어서 실행합니다.")
                 found = True
                 break
@@ -159,10 +170,10 @@ def get_next_task():
     # ✅ 다음 task 가져오기
     if st.session_state.task_index < len(st.session_state.tasks):
         next_task_data = st.session_state.tasks[st.session_state.task_index]
-        st.session_state.task_index += 1
 
         if isinstance(next_task_data, dict) and "identifier" in next_task_data and "task" in next_task_data:
-            save_last_task(next_task_data["identifier"])  # ✅ 실행 직전 identifier 저장
+            st.write(f"🔼 task_index 증가됨: {st.session_state.task_index}")
+
             return next_task_data["identifier"], next_task_data["task"]
         else:
             st.error(f"❌ 잘못된 Task 데이터: {next_task_data}")
@@ -170,12 +181,10 @@ def get_next_task():
     else:
         return None, None  # 모든 task 완료됨
 
-
 class Sender(StrEnum):
     USER = "user"
     BOT = "assistant"
     TOOL = "tool"
-
 
 def setup_state():
     if "messages" not in st.session_state:
@@ -217,9 +226,17 @@ def setup_state():
         st.session_state.saved_file_content = None  # 메모리 저장 방식으로 변경
     if "last_message_count" not in st.session_state:
         st.session_state.last_message_count = 0
-    # JSON에서 task 로드
-    if "tasks" not in st.session_state:
-        st.session_state.tasks = load_tasks_from_json(json_path)  # JSON에서 task 로드
+    # 선택된 JSON 파일 기준으로 task 로드
+    if "selected_file" in st.session_state:
+        file_path = os.path.join(DATA_DIR, st.session_state.selected_file)
+
+        if "tasks" not in st.session_state or st.session_state.tasks_file != st.session_state.selected_file:
+            st.session_state.tasks = load_tasks_from_json(file_path)  # JSON에서 task 로드
+            st.session_state.task_index = 0
+            st.session_state.tasks_file = st.session_state.selected_file  # 현재 로드된 파일 추적
+    else:
+        st.warning("⚠️ JSON 파일이 선택되지 않았습니다. 버튼을 눌러 파일을 선택하세요.")
+
     # 현재 사용 중인 Task 인덱스 확인
     if "task_index" not in st.session_state:
         st.session_state.task_index = 0
@@ -232,12 +249,12 @@ def _reset_model():
 
 async def main():
     """Render loop for streamlit"""
-    setup_state()
 
     st.markdown(STREAMLIT_STYLE, unsafe_allow_html=True)
 
-    st.title("Claude Computer Use Demo")
-
+    st.title("Automatic Attack Manager")
+    setup_state()
+    #current_dir = os.getcwd()
     # st.write(f"📌 log_saved status: {st.session_state.log_saved}")
     # st.write(f"📌 download_ready status: {st.session_state.download_ready}")
     # st.write(f"📌 in_sampling_loop status: {st.session_state.in_sampling_loop}")
@@ -245,7 +262,6 @@ async def main():
     # st.write("📂 JSON 파일 경로:", json_path)
     # st.write("🔍 JSON 절대 파일 경로:", os.path.abspath(json_path))
     # 현재 실행 중인 작업 디렉토리 확인
-    current_dir = os.getcwd()
     # st.write(f"📂 현재 작업 디렉토리: {current_dir}")
     # st.write(f"📂 현재 Streamlit 작업 디렉토리: `{os.getcwd()}`")
     # st.write(f"🐍 실행 중인 Python 경로: `{sys.executable}`")
@@ -257,19 +273,22 @@ async def main():
     #     st.error(f"⚠️ JSON 파일이 존재하지 않습니다: `{json_path}`")
 
     # JSON 파일 로드 시도
-    json_data = load_json_from_path(json_path)
+    #json_data = load_json_from_path(json_path)
     # 불러온 데이터 확인
-    st.write("📄 불러온 JSON 데이터:", json_data)
+    #st.write("📄 불러온 JSON 데이터:", json_data)
     # st.write("🔄 불러온 Task 목록:", st.session_state.tasks)  # 전체 task 리스트 확인
     # st.write(f"📌 현재 Task Index: {st.session_state.task_index}")
     #st.write(f"🎯 현재 할당된 Task: {new_task}")
 
-
     if not os.getenv("HIDE_WARNING", False):
         st.warning(WARNING_TEXT)
+    json_files = get_json_files()
+    if not json_files:
+        st.error("⚠️ No JSON files found in data folder.")
+        return
+
 
     with st.sidebar:
-
         def _reset_api_provider():
             if st.session_state.provider_radio != st.session_state.provider:
                 _reset_model()
@@ -329,13 +348,21 @@ async def main():
         else:
             st.session_state.auth_validated = True
 
+    st.subheader("Select a JSON file to start:")
+
+    # "_last_task"가 포함되지 않은 파일만 필터링
+    filtered_files = [file for file in json_files if "_last_task" not in file]
+
     chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
+    for file in filtered_files:
+        if st.button(file):
+            st.session_state.selected_file = file
+            st.session_state.messages = []
+            st.session_state.task_index = 0
+            st.write(f"🚀 Selected file: {file}")
+            await run_task_loop(http_logs, file)
+            st.experimental_rerun()  # UI 업데이트 강제 적용
 
-    #automatic input
-    if st.button("start automatic attack!"):
-        await run_task_loop(http_logs)
-
-    #new_message=get_next_task()
     new_message = st.chat_input(
         "Type a message to send to Claude to control the computer..."
     )
@@ -427,14 +454,6 @@ def maybe_add_interruption_blocks():
     result.append(BetaTextBlockParam(type="text", text=INTERRUPT_TEXT))
     return result
 
-
-@contextmanager
-def track_sampling_loop():
-    st.session_state.in_sampling_loop = True
-    yield
-    st.session_state.in_sampling_loop = False
-
-
 def validate_auth(provider: APIProvider, api_key: str | None):
     if provider == APIProvider.ANTHROPIC:
         if not api_key:
@@ -515,22 +534,25 @@ def _render_api_response(
     tab: DeltaGenerator,
 ):
     """Render an API response to a streamlit tab"""
-    with tab:
-        with st.expander(f"Request/Response ({response_id})"):
-            newline = "\n\n"
-            st.markdown(
-                f"`{request.method} {request.url}`{newline}{newline.join(f'`{k}: {v}`' for k, v in request.headers.items())}"
-            )
-            st.json(request.read().decode())
-            st.markdown("---")
-            if isinstance(response, httpx.Response):
-                st.markdown(
-                    f"`{response.status_code}`{newline}{newline.join(f'`{k}: {v}`' for k, v in response.headers.items())}"
-                )
-                st.json(response.text)
-            else:
-                st.write(response)
+    if isinstance(tab, DeltaGenerator):  # ✅ 올바른 타입인지 체크
 
+        with tab:
+            with st.expander(f"Request/Response ({response_id})"):
+                newline = "\n\n"
+                st.markdown(
+                    f"`{request.method} {request.url}`{newline}{newline.join(f'`{k}: {v}`' for k, v in request.headers.items())}"
+                )
+                st.json(request.read().decode())
+                st.markdown("---")
+                if isinstance(response, httpx.Response):
+                    st.markdown(
+                        f"`{response.status_code}`{newline}{newline.join(f'`{k}: {v}`' for k, v in response.headers.items())}"
+                    )
+                    st.json(response.text)
+                else:
+                    st.write(response)
+    else:
+        st.error("⚠️ Invalid tab object detected!")
 
 def _render_error(error: Exception):
     if isinstance(error, RateLimitError):
@@ -584,7 +606,8 @@ def _render_message(
         else:
             st.markdown(message)
 
-def download_chat_logs():
+def download_chat_logs(selected_file):
+    """로그 저장 시 파일명 변경 (chat_log → JSON 파일명)"""
     if not st.session_state.messages:
         st.write("⚠️ No messages to save")
         return None
@@ -622,7 +645,7 @@ def download_chat_logs():
     }
     json_bytes = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
     st.session_state.saved_file_content = io.BytesIO(json_bytes)
-    st.session_state.saved_file_name = f"chat_log_{timestamp}_{last_identifier}.json"
+    st.session_state.saved_file_name = f"{selected_file}_{timestamp}_{last_identifier}.json"
     st.write("✅ Log saved completed:", st.session_state.saved_file_name)
     st.write("📄 Stored data length:", len(json_bytes))
     return True
@@ -688,38 +711,43 @@ def track_sampling_loop():
     yield
     st.session_state.in_sampling_loop = False
     st.write("✅ End sampling loop")
-
-    # 대화 로그 저장
-    success = download_chat_logs()
-    last_identifier = st.session_state.get("current_identifier", "unknown")
-    if success and not last_identifier.startswith("scenchg"):
-        st.session_state.download_ready = True
-        st.write("📂 Conversation auto-save completed!")
-        trigger_auto_download()
     
-    """"""
+    last_identifier = st.session_state.get("current_identifier", "unknown")
+    save_last_task(st.session_state.selected_file, last_identifier)
+
+    # 대화 로그 저장 way1
+    """ 바탕화면에 저장(코드 삭제 금지) """
+    # success = download_chat_logs(st.session_state.selected_file)
+    # if success and not last_identifier.startswith("scenchg"):
+    #     st.session_state.download_ready = True
+    #     st.write("📂 Conversation auto-save completed!")
+    #     trigger_auto_download()
+       
+    #마운트 된 폴더에도 저장 way2
+    if not last_identifier.startswith("scenchg"):
+        st.session_state.download_ready = True
+        save_log_to_dir(st.session_state.selected_file)
+        st.write("📂 Conversation auto-save completed!") 
+
     # Reset message after saving log (start new conversation)
     if st.session_state.messages:
-        #last_message = st.session_state.messages[-1]  # Save last user input
-        #st.session_state.messages = [last_message]  # Reset leaving only the last message
         st.session_state.messages=[]
-
     #After saving the log, initialize the state (prepare to receive the next input)
     st.session_state.log_saved = False
 
-async def run_task_loop(http_logs):
+async def run_task_loop(http_logs, selected_file):
     """Task를 반복해서 실행하는 루프 (중단된 위치부터 재시작)"""
     while True:
-        new_identifier, new_task = get_next_task()
-
+        new_identifier, new_task = get_next_task(selected_file)
+        #track_sampling_loop 끝과 함께 시작 전에도 대화 데이터 삭제
+        if st.session_state.messages:
+            st.session_state.messages=[]
         if new_task is None:
             st.warning("All tasks are exhausted. End.")
             break  # 모든 Task가 끝났으면 종료
 
         st.session_state.current_identifier = new_identifier  
-
-        # ✅ 실행 직전에 identifier 저장
-        save_last_task(new_identifier)
+        #save_last_task(selected_file, new_identifier) 
 
         # 새로운 Task를 Messages에 추가
         st.session_state.messages.append(
@@ -756,6 +784,68 @@ async def run_task_loop(http_logs):
 
         await asyncio.sleep(4)  # 너무 빠른 반복을 방지하기 위해 4초 대기
 
+
+def save_log_to_dir(selected_file):
+    """로그를 log 디렉토리에 저장하는 함수"""
+    st.write("⚠️ save_log_to_dir")
+    if not st.session_state.messages:
+        st.write("⚠️ No messages to save")
+        return None
+
+    if st.session_state.log_saved:
+        st.write("⚠️ Log has already been saved")
+        return None
+
+    st.session_state.log_saved = True
+
+    last_identifier = st.session_state.get("current_identifier", "unknown")
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+
+    processed_messages = []
+    for msg in st.session_state.messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+
+        if role == "user" and isinstance(content, list):
+            for item in content:
+                if item.get("type") == "tool_result":
+                    role = "assistant"
+                    break
+
+        processed_messages.append({"role": role, "content": content})
+
+    log_data = {
+        "timestamp": timestamp,
+        "identifier": last_identifier,
+        "messages": processed_messages,
+    }
+
+    json_bytes = json.dumps(log_data, indent=4, ensure_ascii=False).encode("utf-8")
+
+    # ✅ 로그 디렉토리 존재 확인 후 파일 저장
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR, exist_ok=True)
+
+    log_file_path = os.path.join(LOG_DIR, f"{selected_file}_{timestamp}_{last_identifier}.json")
+
+    try:
+        with open(log_file_path, "wb") as log_file:
+            log_file.write(json_bytes)
+
+        # ✅ 파일이 정상적으로 저장되었는지 확인
+        if os.path.exists(log_file_path) and os.stat(log_file_path).st_size > 0:
+            st.session_state.saved_file_name = log_file_path
+            st.session_state.saved_file_content = io.BytesIO(json_bytes)
+            st.write(f"✅ Log successfully saved: {log_file_path}")
+            st.write(f"📄 File size: {os.stat(log_file_path).st_size} bytes")
+            #return True
+        else:
+            st.error("❌ Log file was created but is empty. Please check the writing process.")
+            #return False
+
+    except Exception as e:
+        st.error(f"❌ Log saving failed: {e}")
+        #return False
 
 if __name__ == "__main__":
     asyncio.run(main())

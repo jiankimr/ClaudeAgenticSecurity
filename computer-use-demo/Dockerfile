@@ -90,6 +90,21 @@ RUN python -m pip install --upgrade pip==23.1.2 setuptools==58.0.4 wheel==0.40.0
 COPY --chown=$USERNAME:$USERNAME computer_use_demo/requirements.txt $HOME/computer_use_demo/requirements.txt
 RUN python -m pip install -r $HOME/computer_use_demo/requirements.txt
 
+
+# ✅ `data/` 폴더를 컨테이너 내부에 포함 (없으면 생성)
+RUN mkdir -p $HOME/computer_use_demo/data
+# ✅ log 폴더가 정상적으로 유지되도록 ENTRYPOINT 실행 시 생성
+RUN mkdir -p /home/computeruse/computer_use_demo/log
+RUN chmod -R 777 /home/computeruse/computer_use_demo/log  # ✅ 권한 수정 (필요할 경우)
+
+
+
+# ✅ 호스트에서 `data/` 폴더를 마운트하면 내부에서 자동으로 활용 가능
+VOLUME [ "/home/computeruse/computer_use_demo/data" ]
+
+#컨테이너 시작시 새로운 빈 디렉토리가 되지 않도록, 주석처리
+#VOLUME [ "/home/computeruse/computer_use_demo/log" ]
+
 # setup desktop env & app
 COPY --chown=$USERNAME:$USERNAME image/ $HOME
 COPY --chown=$USERNAME:$USERNAME computer_use_demo/ $HOME/computer_use_demo/
