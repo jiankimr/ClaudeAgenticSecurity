@@ -60,8 +60,27 @@ INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
 json_path = "/home/computeruse/computer_use_demo/HarmGUI.json"
+LAST_TASK_FILE = "/home/computeruse/computer_use_demo/last_task.json"
 
-import json
+def load_last_task():
+    """마지막 실행한 identifier를 불러오는 함수"""
+    if os.path.exists(LAST_TASK_FILE):
+        try:
+            with open(LAST_TASK_FILE, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                return data.get("last_identifier")
+        except json.JSONDecodeError:
+            st.warning("⚠️ 마지막 실행 기록 파일이 손상되었습니다. 처음부터 실행합니다.")
+            return None
+    return None
+
+def save_last_task(identifier):
+    """현재 실행 중인 identifier를 저장하는 함수"""
+    try:
+        with open(LAST_TASK_FILE, "w", encoding="utf-8") as file:
+            json.dump({"last_identifier": identifier}, file, indent=4, ensure_ascii=False)
+    except Exception as e:
+        st.error(f"❌ 마지막 실행 기록 저장 실패: {e}")
 
 def load_json_from_path(file_path):
     absolute_path = os.path.abspath(file_path)  
@@ -122,17 +141,35 @@ def get_next_task():
     if "task_index" not in st.session_state:
         st.session_state.task_index = 0
 
+    last_identifier = load_last_task()  # 마지막 실행한 identifier 불러오기
+
+    # ✅ 마지막 실행된 identifier 이후의 task부터 실행
+    if last_identifier:
+        found = False
+        for idx, task in enumerate(st.session_state.tasks):
+            if task["identifier"] == last_identifier:
+                st.session_state.task_index = idx + 1  # 마지막 identifier 이후의 task부터 실행
+                st.success(f"🔄 이전 실행된 task({last_identifier})를 확인했습니다. 이어서 실행합니다.")
+                found = True
+                break
+        if not found:
+            st.warning(f"⚠️ 저장된 identifier({last_identifier})가 목록에 없습니다. 처음부터 실행합니다.")
+            st.session_state.task_index = 0  # identifier가 목록에 없으면 처음부터 실행
+
+    # ✅ 다음 task 가져오기
     if st.session_state.task_index < len(st.session_state.tasks):
         next_task_data = st.session_state.tasks[st.session_state.task_index]
         st.session_state.task_index += 1
 
         if isinstance(next_task_data, dict) and "identifier" in next_task_data and "task" in next_task_data:
-            return next_task_data["identifier"], next_task_data["task"]  # identifier, task 분리 반환
+            save_last_task(next_task_data["identifier"])  # ✅ 실행 직전 identifier 저장
+            return next_task_data["identifier"], next_task_data["task"]
         else:
             st.error(f"❌ 잘못된 Task 데이터: {next_task_data}")
             return None, None
     else:
-        return None, None  # 모든 task가 소진됨
+        return None, None  # 모든 task 완료됨
+
 
 class Sender(StrEnum):
     USER = "user"
@@ -655,7 +692,7 @@ def track_sampling_loop():
     # 대화 로그 저장
     success = download_chat_logs()
     last_identifier = st.session_state.get("current_identifier", "unknown")
-    if success and last_identifier != "scenchg":
+    if success and not last_identifier.startswith("scenchg"):
         st.session_state.download_ready = True
         st.write("📂 Conversation auto-save completed!")
         trigger_auto_download()
@@ -671,7 +708,7 @@ def track_sampling_loop():
     st.session_state.log_saved = False
 
 async def run_task_loop(http_logs):
-    """Task를 반복해서 실행하는 루프"""
+    """Task를 반복해서 실행하는 루프 (중단된 위치부터 재시작)"""
     while True:
         new_identifier, new_task = get_next_task()
 
@@ -680,6 +717,9 @@ async def run_task_loop(http_logs):
             break  # 모든 Task가 끝났으면 종료
 
         st.session_state.current_identifier = new_identifier  
+
+        # ✅ 실행 직전에 identifier 저장
+        save_last_task(new_identifier)
 
         # 새로운 Task를 Messages에 추가
         st.session_state.messages.append(
@@ -719,4 +759,3 @@ async def run_task_loop(http_logs):
 
 if __name__ == "__main__":
     asyncio.run(main())
-
