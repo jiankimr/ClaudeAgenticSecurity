@@ -85,6 +85,14 @@ ENV PATH="$HOME/.pyenv/shims:$HOME/.pyenv/bin:$PATH"
 
 RUN python -m pip install --upgrade pip==23.1.2 setuptools==58.0.4 wheel==0.40.0 && \
     python -m pip config set global.disable-pip-version-check true
+# Playwright 설치 (Python 패키지 + 브라우저 엔진)
+RUN python -m pip install --no-cache-dir playwright && \
+    python -m playwright install --with-deps
+# /dev/shm 크기 조정 (Playwright 성능 향상)
+RUN mount -o remount,size=2G /dev/shm || true
+
+# Playwright 권한 문제 해결
+RUN chmod -R 777 ~/.cache/ms-playwright
 
 # only reinstall if requirements.txt changes
 COPY --chown=$USERNAME:$USERNAME computer_use_demo/requirements.txt $HOME/computer_use_demo/requirements.txt

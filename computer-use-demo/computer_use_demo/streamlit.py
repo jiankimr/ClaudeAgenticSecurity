@@ -16,10 +16,10 @@ from pathlib import PosixPath
 from typing import cast
 import json
 from datetime import datetime
-import streamlit.components.v1 as components
+# import streamlit.components.v1 as components
 
-import httpx
 import streamlit as st
+import httpx
 from anthropic import RateLimitError
 from anthropic.types.beta import (
     BetaContentBlockParam,
@@ -27,6 +27,7 @@ from anthropic.types.beta import (
     BetaToolResultBlockParam,
 )
 from streamlit.delta_generator import DeltaGenerator
+from playwright.async_api import async_playwright  # ✅ 비동기 API 사용
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
@@ -234,8 +235,8 @@ def setup_state():
             st.session_state.tasks = load_tasks_from_json(file_path)  # JSON에서 task 로드
             st.session_state.task_index = 0
             st.session_state.tasks_file = st.session_state.selected_file  # 현재 로드된 파일 추적
-    else:
-        st.warning("⚠️ JSON 파일이 선택되지 않았습니다. 버튼을 눌러 파일을 선택하세요.")
+    #else:
+    #    st.warning("⚠️ JSON 파일이 선택되지 않았습니다. 버튼을 눌러 파일을 선택하세요.")
 
     # 현재 사용 중인 Task 인덱스 확인
     if "task_index" not in st.session_state:
@@ -735,6 +736,15 @@ def track_sampling_loop():
     #After saving the log, initialize the state (prepare to receive the next input)
     st.session_state.log_saved = False
 
+    if st.session_state.selected_file == "harmGUI_scnchg.json":
+        current_identifier = st.session_state.get("current_identifier", "unknown")
+        # ✅ Streamlit에서 비동기 실행이 필요하므로 `asyncio.run()` 대신 `st.experimental_async` 사용
+        async def run_capture():
+            await capture_screenshot(current_identifier)
+
+        asyncio.create_task(run_capture())  # ✅ 별도의 비동기 태스크로 실행
+
+
 async def run_task_loop(http_logs, selected_file):
     """Task를 반복해서 실행하는 루프 (중단된 위치부터 재시작)"""
     while True:
@@ -846,6 +856,22 @@ def save_log_to_dir(selected_file):
     except Exception as e:
         st.error(f"❌ Log saving failed: {e}")
         #return False
+
+async def capture_screenshot(identifier):
+    """http://localhost:6080/ 화면을 캡처하여 identifier.png로 저장"""
+    screenshot_path = os.path.join(LOG_DIR + "/screenshot", f"{identifier}.png")
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)  # ✅ 비동기 Await 사용
+            page = await browser.new_page()
+            await page.goto("http://127.0.0.1:6080/vnc.html?&resize=scale&autoconnect=1&view_only=1", wait_until="networkidle")  # ✅ 비동기 Await 사용 #&reconnect=1&reconnect_delay=2000
+            await page.screenshot(path=screenshot_path, full_page=True)
+            await browser.close()
+
+        st.success(f"📸 Screen Capture complete!: {screenshot_path}")
+        return screenshot_path
+    except Exception as e:
+        st.error(f"❌ Screen Capture failed: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
