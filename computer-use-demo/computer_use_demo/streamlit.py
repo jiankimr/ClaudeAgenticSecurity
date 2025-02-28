@@ -28,6 +28,7 @@ from anthropic.types.beta import (
 )
 from streamlit.delta_generator import DeltaGenerator
 from playwright.async_api import async_playwright  # ✅ 비동기 API 사용
+from PIL import Image  # ✅ 이미지 크롭을 위한 Pillow 라이브러리
 
 from computer_use_demo.loop import (
     PROVIDER_TO_DEFAULT_MODEL_NAME,
@@ -867,6 +868,19 @@ async def capture_screenshot(identifier):
             await page.goto("http://127.0.0.1:6080/vnc.html?&resize=scale&autoconnect=1&view_only=1", wait_until="networkidle")  # ✅ 비동기 Await 사용 #&reconnect=1&reconnect_delay=2000
             await page.screenshot(path=screenshot_path, full_page=True)
             await browser.close()
+            # ✅ 스크린샷을 크롭하기 위해 이미지 열기
+            image = Image.open(screenshot_path)
+            width, height = image.size  # 이미지 크기 가져오기
+
+            # ✅ 자를 영역 설정 (좌측 50px, 상단 80px, 우측 50px, 하단 유지)
+            left = 158.5  # 좌측 여백
+            #top = 77   # 상단 회색 바 제거
+            top=0
+            right = width - 158.5  # 우측 여백
+            bottom = height  # 전체 높이 유지
+
+            cropped_image = image.crop((left, top, right, bottom))  # ✅ 이미지 크롭
+            cropped_image.save(screenshot_path)  # ✅ 크롭된 이미지 저장
 
         st.success(f"📸 Screen Capture complete!: {screenshot_path}")
         return screenshot_path
