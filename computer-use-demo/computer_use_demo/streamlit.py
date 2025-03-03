@@ -213,7 +213,8 @@ async def main():
                         )
 
         # render past http exchanges
-        for identity, (request, response) in st.session_state.responses.items():
+        responses_copy = list(st.session_state.responses.items())
+        for identity, (request, response) in responses_copy:
             _api_response_callback(
                 request=request,
                 response=response,
